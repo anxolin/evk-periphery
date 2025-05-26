@@ -32,7 +32,7 @@ contract EvcWrapper {
         evc = IEVC(_evc);
     }
 
-    function batch(BatchItem[] calldata items) public payable {
+    function batch(IEVC.BatchItem[] calldata items) public payable {
         evc.batch(items);
     }
 
@@ -61,6 +61,7 @@ contract SwapsCoW is EVaultTestBase {
 
     address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
     CowSettlement constant cowSettlement = CowSettlement(0x9008D19f58AAbD9eD0D60971565AA8510560ab41);
+    EvcWrapper evcWrapper;
 
     string FORK_RPC_URL = vm.envOr("FORK_RPC_URL", string(""));
 
@@ -210,7 +211,7 @@ contract SwapsCoW is EVaultTestBase {
 
         evcWrapper.batch(items);
 
-        assertEq(mutableStorage.value(), 123);
+        assertEq(evcWrapper.value(), 123);
     }
 
     function test_solverCantSettleInsideEVC() external {
