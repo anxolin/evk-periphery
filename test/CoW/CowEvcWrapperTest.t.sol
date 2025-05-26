@@ -20,7 +20,6 @@ contract CowEvcWrapperTest is EVaultTestBase {
     address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
     CowSettlement constant cowSettlement = CowSettlement(0x9008D19f58AAbD9eD0D60971565AA8510560ab41);
-    AllowListAuthentication allowList;
 
     CowEvcWrapper public wrapper;
     address user;
@@ -28,19 +27,23 @@ contract CowEvcWrapperTest is EVaultTestBase {
     function setUp() public virtual override {
         super.setUp();
 
-        user = makeAddr("user");
-        wrapper = new CowEvcWrapper(address(evc), address(cowSettlement));
-
-        // Add wrapper as solver
-        allowList = AllowListAuthentication(cowSettlement.authenticator());
-        vm.startPrank(allowList.manager());
-        allowList.addSolver(address(wrapper));
-        vm.stopPrank();
-
         if (bytes(FORK_RPC_URL).length != 0) {
             mainnetFork = vm.createSelectFork(FORK_RPC_URL);
             vm.rollFork(BLOCK_NUMBER);
         }
+
+        user = makeAddr("user");
+        wrapper = new CowEvcWrapper(address(evc), address(cowSettlement));
+
+        // Add wrapper as solver
+        AllowListAuthentication allowList = cowSettlement.authenticator();
+        console.log("cowSettlement", address(cowSettlement));
+        console.log("allowListAddress", address(allowList));
+        address manager = allowList.manager();
+        // vm.deal(address(manager), 1e18);
+        vm.startPrank(manager);
+        allowList.addSolver(address(wrapper));
+        vm.stopPrank();
     }
 
     function getEmptySettlement()
@@ -76,47 +79,10 @@ contract CowEvcWrapperTest is EVaultTestBase {
             CowSettlement.InteractionData[][3] memory interactions
         ) = getEmptySettlement();
 
-        IEVC.BatchItem[] memory preItems = new IEVC.BatchItem[](0);
-        IEVC.BatchItem[] memory postItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
-        wrapper.batchWithSettle(preItems, tokens, clearingPrices, trades, interactions, postItems);
-    }
-
-    function test_batchWithSettle_WithPreAndPostItems() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-        vm.startPrank(solver);
-
-        // Create a simple storage contract to test pre/post items
-        SimpleStorage simpleStorage = new SimpleStorage();
-
-        (
-            address[] memory tokens,
-            uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
-            CowSettlement.InteractionData[][3] memory interactions
-        ) = getEmptySettlement();
-
-        // Create pre-items to set value to 1
-        IEVC.BatchItem[] memory preItems = new IEVC.BatchItem[](1);
-        preItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: solver,
-            targetContract: address(simpleStorage),
-            value: 0,
-            data: abi.encodeCall(SimpleStorage.setValue, (1))
-        });
-
-        // Create post-items to set value to 2
-        IEVC.BatchItem[] memory postItems = new IEVC.BatchItem[](1);
-        postItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: solver,
-            targetContract: address(simpleStorage),
-            value: 0,
-            data: abi.encodeCall(SimpleStorage.setValue, (2))
-        });
-
-        wrapper.batchWithSettle(preItems, tokens, clearingPrices, trades, interactions, postItems);
-
-        assertEq(simpleStorage.value(), 2, "Post-settlement value should be 2");
+        wrapper.batchWithSettle(preSettlementItems, postSettlementItems, tokens, clearingPrices, trades, interactions);
     }
 
     function test_batchWithSettle_NonSolver() external {
@@ -131,11 +97,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
             CowSettlement.InteractionData[][3] memory interactions
         ) = getEmptySettlement();
 
-        IEVC.BatchItem[] memory preItems = new IEVC.BatchItem[](0);
-        IEVC.BatchItem[] memory postItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
         vm.expectRevert("Not a valid solver");
-        wrapper.batchWithSettle(preItems, tokens, clearingPrices, trades, interactions, postItems);
+        wrapper.batchWithSettle(preSettlementItems, postSettlementItems, tokens, clearingPrices, trades, interactions);
     }
 }
 

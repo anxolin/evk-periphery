@@ -16,40 +16,62 @@ contract CowEvcWrapper {
     }
 
     /// @notice Executes a batch of EVC operations with a settlement in between
-    /// @param preItems Items to execute before settlement
+    /// @param preSettlementItems Items to execute before settlement
+    /// @param postSettlementItems Items to execute after settlement
     /// @param tokens Tokens involved in settlement
     /// @param clearingPrices Clearing prices for settlement
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
-    /// @param postItems Items to execute after settlement
     function batchWithSettle(
-        IEVC.BatchItem[] calldata preItems,
+        IEVC.BatchItem[] calldata preSettlementItems,
+        IEVC.BatchItem[] calldata postSettlementItems,
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
         CowSettlement.TradeData[] calldata trades,
-        CowSettlement.InteractionData[][3] calldata interactions,
-        IEVC.BatchItem[] calldata postItems
+        CowSettlement.InteractionData[][3] calldata interactions
     ) external payable {
-        // TODO: Revert if not a valid solver. The wrapper will be a solver itself, so we need to only allow solvers to
-        // invoke
-
-        // Execute pre-settlement items
-        if (preItems.length > 0) {
-            evc.batch(preItems);
+        // Revert if not a valid solver
+        if (!settlement.authenticator().isSolver(msg.sender)) {
+            revert("Not a valid solver");
         }
 
-        // Execute settlement
-        settlement.settle(tokens, clearingPrices, trades, interactions);
+        // Create a single batch with all items
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
 
-        // Execute post-settlement items
-        if (postItems.length > 0) {
-            evc.batch(postItems);
+        // Copy pre-settlement items
+        for (uint256 i = 0; i < preSettlementItems.length; i++) {
+            items[i] = preSettlementItems[i];
         }
+
+        // Add settlement call to wrapper
+        items[preSettlementItems.length] = IEVC.BatchItem({
+            onBehalfOfAccount: msg.sender,
+            targetContract: address(this),
+            value: 0,
+            data: abi.encodeCall(this.settle, (tokens, clearingPrices, trades, interactions))
+        });
+
+        // Copy post-settlement items
+        for (uint256 i = 0; i < postSettlementItems.length; i++) {
+            items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
+        }
+
+        // Execute all items in a single batch
+        evc.batch(items);
     }
 
     /// @notice Executes a batch of EVC operations
-    /// @param items Items to execute
-    function batch(IEVC.BatchItem[] calldata items) external payable {
-        evc.batch(items);
+    /// @param tokens Tokens involved in settlement
+    /// @param clearingPrices Clearing prices for settlement
+    /// @param trades Trade data for settlement
+    /// @param interactions Interaction data for settlement
+    function settle(
+        address[] calldata tokens,
+        uint256[] calldata clearingPrices,
+        CowSettlement.TradeData[] calldata trades,
+        CowSettlement.InteractionData[][3] calldata interactions
+    ) external payable {
+        // TODO: This is unsecure, only for demostration purposes (it should use transient data and avoid re-entrancies)
+        settlement.settle(tokens, clearingPrices, trades, interactions);
     }
 }
