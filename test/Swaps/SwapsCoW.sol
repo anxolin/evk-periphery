@@ -24,6 +24,23 @@ contract MutableStorage {
     }
 }
 
+contract EvcWrapper {
+    IEVC public evc;
+    uint256 public value;
+
+    constructor(address _evc) {
+        evc = IEVC(_evc);
+    }
+
+    function batch(BatchItem[] calldata items) public payable {
+        evc.batch(items);
+    }
+
+    function setValue(uint256 newValue) external {
+        value = newValue;
+    }
+}
+
 /// @notice The tests operate on a fork. Create a .env file with FORK_RPC_URL as per fondry docs
 contract SwapsCoW is EVaultTestBase {
     struct SettlementData {
@@ -68,6 +85,8 @@ contract SwapsCoW is EVaultTestBase {
 
         // Deploy the MutableStorage contract
         mutableStorage = new MutableStorage();
+
+        evcWrapper = new EvcWrapper(address(evc));
 
         if (bytes(FORK_RPC_URL).length != 0) {
             mainnetFork = vm.createSelectFork(FORK_RPC_URL);
@@ -159,19 +178,37 @@ contract SwapsCoW is EVaultTestBase {
         evc.batch(items);
     }
 
-    function test_solverCanWriteToStorageInsideEVC() external {
+    function test_solverCantWriteToStorageInsideEVC() external {
         setupFork(BLOCK_NUMBER, false);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
 
         items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
+            onBehalfOfAccount: solver,
             targetContract: address(mutableStorage),
             value: 0,
             data: abi.encodeCall(MutableStorage.setValue, (123))
         });
 
+        vm.startPrank(address(mutableStorage));
         evc.batch(items);
+
+        assertEq(mutableStorage.value(), 123);
+    }
+
+    function test_solverCanWriteUsingEvcWrapper() external {
+        setupFork(BLOCK_NUMBER, false);
+
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+
+        items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: solver,
+            targetContract: address(evcWrapper),
+            value: 0,
+            data: abi.encodeCall(EvcWrapper.setValue, (123))
+        });
+
+        evcWrapper.batch(items);
 
         assertEq(mutableStorage.value(), 123);
     }
