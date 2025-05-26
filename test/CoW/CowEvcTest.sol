@@ -9,11 +9,9 @@ import {ISwapper} from "../../src/Swaps/ISwapper.sol";
 import {Swapper} from "../../src/Swaps/Swapper.sol";
 import {SwapVerifier} from "../../src/Swaps/SwapVerifier.sol";
 
-import {CowSettlement} from "../../src/Swaps/vendor/CoW.sol";
+import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
 
-import "./Payloads.sol";
-
-import "forge-std/Test.sol";
+import {console} from "forge-std/Test.sol";
 
 /// @notice A minimal storage contract anyone can modify
 contract MutableStorage {
@@ -42,7 +40,7 @@ contract EvcWrapper {
 }
 
 /// @notice The tests operate on a fork. Create a .env file with FORK_RPC_URL as per fondry docs
-contract SwapsCoW is EVaultTestBase {
+contract CowEvcTest is EVaultTestBase {
     struct SettlementData {
         address[] tokens;
         uint256[] clearingPrices;
@@ -191,10 +189,8 @@ contract SwapsCoW is EVaultTestBase {
             data: abi.encodeCall(MutableStorage.setValue, (123))
         });
 
-        vm.startPrank(address(mutableStorage));
+        vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
         evc.batch(items);
-
-        assertEq(mutableStorage.value(), 123);
     }
 
     function test_solverCanWriteUsingEvcWrapper() external {
@@ -238,6 +234,7 @@ contract SwapsCoW is EVaultTestBase {
             data: emptySettlementData
         });
 
+        vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
         evc.batch(items);
     }
 

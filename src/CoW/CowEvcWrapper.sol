@@ -2,11 +2,11 @@
 pragma solidity ^0.8.23;
 
 import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
-import {CowSettlement} from "./vendor/CoW.sol";
+import {CowSettlement} from "./vendor/CowSettlement.sol";
 
-/// @title EvcWrapper
+/// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
-contract EvcWrapper {
+contract CowEvcWrapper {
     IEVC public immutable evc;
     CowSettlement public immutable settlement;
 
@@ -30,6 +30,9 @@ contract EvcWrapper {
         CowSettlement.InteractionData[][3] calldata interactions,
         IEVC.BatchItem[] calldata postItems
     ) external payable {
+        // TODO: Revert if not a valid solver. The wrapper will be a solver itself, so we need to only allow solvers to
+        // invoke
+
         // Execute pre-settlement items
         if (preItems.length > 0) {
             evc.batch(preItems);

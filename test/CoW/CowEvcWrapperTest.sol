@@ -5,27 +5,32 @@ import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 import {IEVault, IERC4626, IERC20} from "lib/euler-vault-kit/src/EVault/IEVault.sol";
 
-import {CowSettlement} from "../../src/Swaps/vendor/CoW.sol";
-import {EvcWrapper} from "../../src/Swaps/EvcWrapper.sol";
+import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
+import {CowEvcWrapper} from "../../src/CoW/CowEvcWrapper.sol";
+import {AllowListAuthentication} from "../../src/CoW/vendor/AllowListAuthentication.sol";
 
 import "forge-std/Test.sol";
 
-contract EvcWrapperTest is EVaultTestBase {
+contract CowEvcWrapperTest is EVaultTestBase {
     uint256 mainnetFork;
     uint256 BLOCK_NUMBER = 22546006;
     string FORK_RPC_URL = vm.envOr("FORK_RPC_URL", string(""));
 
     address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
+    address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
     CowSettlement constant cowSettlement = CowSettlement(0x9008D19f58AAbD9eD0D60971565AA8510560ab41);
 
-    EvcWrapper public wrapper;
+    CowEvcWrapper public wrapper;
     address user;
 
     function setUp() public virtual override {
         super.setUp();
 
         user = makeAddr("user");
-        wrapper = new EvcWrapper(address(evc), address(cowSettlement));
+        wrapper = new CowEvcWrapper(address(evc), address(cowSettlement));
+
+        // Add wrapper as solver
+        AllowListAuthentication(allowListManager).addSolver(address(wrapper));
 
         if (bytes(FORK_RPC_URL).length != 0) {
             mainnetFork = vm.createSelectFork(FORK_RPC_URL);
@@ -107,6 +112,25 @@ contract EvcWrapperTest is EVaultTestBase {
         wrapper.batchWithSettle(preItems, tokens, clearingPrices, trades, interactions, postItems);
 
         assertEq(simpleStorage.value(), 2, "Post-settlement value should be 2");
+    }
+
+    function test_batchWithSettle_NonSolver() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        address nonSolver = makeAddr("nonSolver");
+        vm.startPrank(nonSolver);
+
+        (
+            address[] memory tokens,
+            uint256[] memory clearingPrices,
+            CowSettlement.TradeData[] memory trades,
+            CowSettlement.InteractionData[][3] memory interactions
+        ) = getEmptySettlement();
+
+        IEVC.BatchItem[] memory preItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory postItems = new IEVC.BatchItem[](0);
+
+        vm.expectRevert("Not a valid solver");
+        wrapper.batchWithSettle(preItems, tokens, clearingPrices, trades, interactions, postItems);
     }
 }
 
