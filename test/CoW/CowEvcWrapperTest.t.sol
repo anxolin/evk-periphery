@@ -105,6 +105,44 @@ contract CowEvcWrapperTest is EVaultTestBase {
         return abi.encodePacked(orderDigest, user, uint32(orderData.validTo));
     }
 
+    function getSwapInteraction(uint256 sellAmount) public view returns (CowSettlement.InteractionData memory) {
+        return CowSettlement.InteractionData({
+            to: address(milkSwap),
+            value: 0,
+            callData: abi.encodeCall(MilkSwap.swap, (WETH, DAI, sellAmount))
+        });
+    }
+
+    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address receiver)
+        public
+        pure
+        returns (CowSettlement.TradeData memory)
+    {
+        return CowSettlement.TradeData({
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            flags: 0,
+            executedAmount: 0,
+            signature: bytes("") // No signature needed for pre-approval
+        });
+    }
+
+    function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
+        tokens = new address[](2);
+        tokens[0] = WETH;
+        tokens[1] = DAI;
+
+        clearingPrices = new uint256[](2);
+        clearingPrices[0] = 1e18; // WETH price
+        clearingPrices[1] = 1e18; // DAI price
+    }
+
     function getSwapSettlement(uint256 sellAmount, uint256 buyAmount)
         public
         returns (
@@ -118,45 +156,22 @@ contract CowEvcWrapperTest is EVaultTestBase {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get order UID for the order
-        bytes memory orderUid = getOrderUid(sellAmount, buyAmount, validTo);
+        orderUid = getOrderUid(sellAmount, buyAmount, validTo);
 
-        // Create trade data
-        CowSettlement.TradeData memory trade = CowSettlement.TradeData({
-            sellTokenIndex: 0,
-            buyTokenIndex: 1,
-            receiver: user,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            flags: 0,
-            executedAmount: 0,
-            signature: bytes("") // No signature needed for pre-approval
-        });
+        // Get trade data
+        trades = new CowSettlement.TradeData[](1);
+        trades[0] = getTradeData(sellAmount, buyAmount, validTo, user);
 
-        // Setup settlement data
-        address[] memory tokens = new address[](2);
-        tokens[0] = WETH;
-        tokens[1] = DAI;
+        // Get tokens and prices
+        (tokens, clearingPrices) = getTokensAndPrices();
 
-        uint256[] memory clearingPrices = new uint256[](2);
-        clearingPrices[0] = 1e18; // WETH price
-        clearingPrices[1] = 1e18; // DAI price
-
-        CowSettlement.TradeData[] memory trades = new CowSettlement.TradeData[](1);
-        trades[0] = trade;
-
-        // Create interaction to execute the swap on MilkSwap
-        CowSettlement.InteractionData memory swapInteraction = CowSettlement.InteractionData({
-            to: address(milkSwap),
-            value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, DAI, sellAmount))
-        });
-
-        CowSettlement.InteractionData[][3] memory interactions;
-        interactions[0] = new CowSettlement.InteractionData[](1);
-        interactions[0][0] = swapInteraction;
+        // Setup interactions
+        interactions = [
+            new CowSettlement.InteractionData[](1),
+            new CowSettlement.InteractionData[](0),
+            new CowSettlement.InteractionData[](0)
+        ];
+        interactions[0][0] = getSwapInteraction(sellAmount);
 
         return (orderUid, tokens, clearingPrices, trades, interactions);
     }
