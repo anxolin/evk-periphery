@@ -19,9 +19,13 @@ contract CowEvcWrapperTest is EVaultTestBase {
     address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
     address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
+    address constant DAI = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
     CowSettlement constant cowSettlement = CowSettlement(0x9008D19f58AAbD9eD0D60971565AA8510560ab41);
 
     CowEvcWrapper public wrapper;
+    MilkSwap public milkSwap;
     address user;
 
     function setUp() public virtual override {
@@ -37,13 +41,18 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
         // Add wrapper as solver
         AllowListAuthentication allowList = cowSettlement.authenticator();
-        console.log("cowSettlement", address(cowSettlement));
-        console.log("allowListAddress", address(allowList));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);
         allowList.addSolver(address(wrapper));
         vm.stopPrank();
+
+        // Setup some liquidity for MilkSwap
+        milkSwap = new MilkSwap();
+        deal(DAI, address(milkSwap), 1000e18); // Add DAI to MilkSwap
+
+        // User has approved WETH for COW Protocol
+        IERC20(WETH).approve(address(cowSettlement.vaultRelayer()), type(uint256).max);
     }
 
     function getEmptySettlement()
@@ -105,10 +114,21 @@ contract CowEvcWrapperTest is EVaultTestBase {
     }
 }
 
-contract SimpleStorage {
-    uint256 public value;
+contract MilkSwap {
+    // Mock price for testing - 1:1 ratio
+    uint256 constant PRICE = 1e18;
 
-    function setValue(uint256 newValue) external {
-        value = newValue;
+    function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn)
+        external
+        pure
+        returns (uint256 amountOut)
+    {
+        return (amountIn * PRICE) / 1e18;
+    }
+
+    function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
+        uint256 amountOut = getAmountOut(tokenIn, tokenOut, amountIn);
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(tokenOut).transfer(msg.sender, amountOut);
     }
 }
