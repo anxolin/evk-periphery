@@ -8,8 +8,9 @@ import {IEVault, IERC4626, IERC20} from "lib/euler-vault-kit/src/EVault/IEVault.
 import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
 import {CowEvcWrapper} from "../../src/CoW/CowEvcWrapper.sol";
 import {AllowListAuthentication} from "../../src/CoW/vendor/AllowListAuthentication.sol";
+import {CowOrder} from "../../src/CoW/library/CowOrder.sol";
 
-import "forge-std/Test.sol";
+import {console} from "forge-std/Test.sol";
 
 contract CowEvcWrapperTest is EVaultTestBase {
     uint256 mainnetFork;
@@ -77,6 +78,89 @@ contract CowEvcWrapperTest is EVaultTestBase {
         );
     }
 
+    function getOrderUid(uint256 sellAmount, uint256 buyAmount, uint32 validTo)
+        public
+        returns (bytes memory orderUid)
+    {
+        // Create order data
+        CowSettlement.OrderData memory orderData = CowSettlement.OrderData({
+            sellToken: WETH,
+            buyToken: DAI,
+            receiver: user,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: bytes32("sell"),
+            partiallyFillable: false,
+            sellTokenBalance: bytes32("erc20"),
+            buyTokenBalance: bytes32("erc20")
+        });
+
+        // Generate order digest using EIP-712
+        bytes32 orderDigest = CowOrder.hash(orderData, cowSettlement.domainSeparator());
+
+        // Create order UID by concatenating orderDigest, owner, and validTo
+        return abi.encodePacked(orderDigest, user, uint32(orderData.validTo));
+    }
+
+    function getSwapSettlement(uint256 sellAmount, uint256 buyAmount)
+        public
+        returns (
+            bytes memory orderUid,
+            address[] memory tokens,
+            uint256[] memory clearingPrices,
+            CowSettlement.TradeData[] memory trades,
+            CowSettlement.InteractionData[][3] memory interactions
+        )
+    {
+        uint32 validTo = uint32(block.timestamp + 1 hours);
+
+        // Get order UID for the order
+        bytes memory orderUid = getOrderUid(sellAmount, buyAmount, validTo);
+
+        // Create trade data
+        CowSettlement.TradeData memory trade = CowSettlement.TradeData({
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            receiver: user,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            flags: 0,
+            executedAmount: 0,
+            signature: bytes("") // No signature needed for pre-approval
+        });
+
+        // Setup settlement data
+        address[] memory tokens = new address[](2);
+        tokens[0] = WETH;
+        tokens[1] = DAI;
+
+        uint256[] memory clearingPrices = new uint256[](2);
+        clearingPrices[0] = 1e18; // WETH price
+        clearingPrices[1] = 1e18; // DAI price
+
+        CowSettlement.TradeData[] memory trades = new CowSettlement.TradeData[](1);
+        trades[0] = trade;
+
+        // Create interaction to execute the swap on MilkSwap
+        CowSettlement.InteractionData memory swapInteraction = CowSettlement.InteractionData({
+            to: address(milkSwap),
+            value: 0,
+            callData: abi.encodeCall(MilkSwap.swap, (WETH, DAI, sellAmount))
+        });
+
+        CowSettlement.InteractionData[][3] memory interactions;
+        interactions[0] = new CowSettlement.InteractionData[](1);
+        interactions[0][0] = swapInteraction;
+
+        return (orderUid, tokens, clearingPrices, trades, interactions);
+    }
+
     function test_batchWithSettle_Empty() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
         vm.startPrank(solver);
@@ -112,6 +196,46 @@ contract CowEvcWrapperTest is EVaultTestBase {
         vm.expectRevert("Not a valid solver");
         wrapper.batchWithSettle(preSettlementItems, postSettlementItems, tokens, clearingPrices, trades, interactions);
     }
+
+    function test_batchWithSettle_WithCoWOrder() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        uint256 daiBalanceInMilkSwapBefore = IERC20(DAI).balanceOf(address(milkSwap));
+
+        // Setup user with WETH
+        deal(WETH, user, 1e18);
+        vm.startPrank(user);
+
+        // Create order parameters
+        uint256 sellAmount = 100e18; // 100 WETH
+        uint256 buyAmount = 100e18; //  100 DAI (we assume 1:1 price WETH to DAI)
+
+        // Get settlement, that sells WETH for DAI
+        (
+            bytes memory orderUid,
+            address[] memory tokens,
+            uint256[] memory clearingPrices,
+            CowSettlement.TradeData[] memory trades,
+            CowSettlement.InteractionData[][3] memory interactions
+        ) = getSwapSettlement(sellAmount, buyAmount);
+
+        // Pre-approve the order
+        cowSettlement.setPreSignature(orderUid, true);
+
+        // Execute the settlement through the wrapper
+        vm.stopPrank();
+        vm.startPrank(solver);
+
+        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](0);
+        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
+        wrapper.batchWithSettle(preSettlementItems, postSettlementItems, tokens, clearingPrices, trades, interactions);
+
+        // Verify the swap was executed
+        assertEq(IERC20(DAI).balanceOf(user), buyAmount, "User should receive DAI");
+        assertEq(IERC20(WETH).balanceOf(address(milkSwap)), sellAmount, "MilkSwap should receive WETH");
+
+        uint256 daiBalanceInMilkSwapAfter = IERC20(DAI).balanceOf(address(milkSwap));
+        assertEq(daiBalanceInMilkSwapAfter, daiBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less DAI");
+    }
 }
 
 contract MilkSwap {
@@ -127,7 +251,7 @@ contract MilkSwap {
     }
 
     function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
-        uint256 amountOut = getAmountOut(tokenIn, tokenOut, amountIn);
+        uint256 amountOut = this.getAmountOut(tokenIn, tokenOut, amountIn);
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenOut).transfer(msg.sender, amountOut);
     }
