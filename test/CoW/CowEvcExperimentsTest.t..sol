@@ -40,7 +40,7 @@ contract EvcWrapper {
 }
 
 /// @notice The tests operate on a fork. Create a .env file with FORK_RPC_URL as per fondry docs
-contract CowEvcTest is EVaultTestBase {
+contract CowEvcExperimentsTest is EVaultTestBase {
     struct SettlementData {
         address[] tokens;
         uint256[] clearingPrices;
