@@ -12,4 +12,8 @@ interface AllowListAuthentication {
     /// @param prospectiveSolver The address to check
     /// @return True if the address is a valid solver, false otherwise
     function isSolver(address prospectiveSolver) external view returns (bool);
+
+    /// @notice Returns the manager address
+    /// @return The manager address
+    function manager() external view returns (address);
 }

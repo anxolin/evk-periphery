@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.23;
 
+import {AllowListAuthentication} from "./AllowListAuthentication.sol";
+
 interface CowSettlement {
     struct OrderData {
         address sellToken;
@@ -49,4 +51,6 @@ interface CowSettlement {
     function domainSeparator() external view returns (bytes32);
 
     function vaultRelayer() external view returns (address);
+
+    function authenticator() external view returns (AllowListAuthentication);
 }
