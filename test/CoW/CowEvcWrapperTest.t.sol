@@ -2,13 +2,12 @@
 pragma solidity ^0.8.23;
 
 import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
+import {GPv2Order, IERC20} from "cow/libraries/GPv2Order.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
-import {IEVault, IERC4626, IERC20} from "lib/euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
 import {CowEvcWrapper} from "../../src/CoW/CowEvcWrapper.sol";
 import {AllowListAuthentication} from "../../src/CoW/vendor/AllowListAuthentication.sol";
-import {CowOrder} from "../../src/CoW/library/CowOrder.sol";
 
 import {console} from "forge-std/Test.sol";
 
@@ -96,9 +95,9 @@ contract CowEvcWrapperTest is EVaultTestBase {
         );
     }
 
-    function getOrderUid(CowSettlement.OrderData memory orderData) public view returns (bytes memory orderUid) {
+    function getOrderUid(GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
-        bytes32 orderDigest = CowOrder.hash(orderData, cowSettlement.domainSeparator());
+        bytes32 orderDigest = GPv2Order.hash(orderData, cowSettlement.domainSeparator());
 
         // Create order UID by concatenating orderDigest, owner, and validTo
         return abi.encodePacked(orderDigest, address(cowSettlement), uint32(orderData.validTo));
@@ -161,9 +160,9 @@ contract CowEvcWrapperTest is EVaultTestBase {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create order data
-        CowSettlement.OrderData memory orderData = CowSettlement.OrderData({
-            sellToken: WETH,
-            buyToken: DAI,
+        GPv2Order.Data memory orderData = GPv2Order.Data({
+            sellToken: IERC20(WETH),
+            buyToken: IERC20(DAI),
             receiver: user,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
