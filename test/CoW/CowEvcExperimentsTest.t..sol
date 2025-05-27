@@ -9,7 +9,7 @@ import {ISwapper} from "../../src/Swaps/ISwapper.sol";
 import {Swapper} from "../../src/Swaps/Swapper.sol";
 import {SwapVerifier} from "../../src/Swaps/SwapVerifier.sol";
 
-import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
+import {CowSettlement, GPv2Trade} from "../../src/CoW/vendor/CowSettlement.sol";
 
 import {console} from "forge-std/Test.sol";
 
@@ -44,7 +44,7 @@ contract CowEvcExperimentsTest is EVaultTestBase {
     struct SettlementData {
         address[] tokens;
         uint256[] clearingPrices;
-        CowSettlement.TradeData[] trades;
+        GPv2Trade.Data[] trades;
         CowSettlement.InteractionData[][3] interactions;
     }
 
@@ -96,7 +96,7 @@ contract CowEvcExperimentsTest is EVaultTestBase {
         return SettlementData({
             tokens: new address[](0),
             clearingPrices: new uint256[](0),
-            trades: new CowSettlement.TradeData[](0),
+            trades: new GPv2Trade.Data[](0),
             interactions: [
                 new CowSettlement.InteractionData[](0),
                 new CowSettlement.InteractionData[](0),

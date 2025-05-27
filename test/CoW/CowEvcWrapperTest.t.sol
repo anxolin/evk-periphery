@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.23;
 
-import {GPv2Order, IERC20} from "cow/libraries/GPv2Order.sol";
+import {GPv2Signing} from "cow/mixins/GPv2Signing.sol";
+import {GPv2Order} from "cow/libraries/GPv2Order.sol";
+import {GPv2Trade, IERC20} from "cow/libraries/GPv2Trade.sol";
+
 import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 
 import {CowEvcWrapper} from "../../src/CoW/CowEvcWrapper.sol";
 import {AllowListAuthentication} from "../../src/CoW/vendor/AllowListAuthentication.sol";
-import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
+import {CowSettlement, GPv2Trade} from "../../src/CoW/vendor/CowSettlement.sol";
 
 import {console} from "forge-std/Test.sol";
 
@@ -85,14 +88,14 @@ contract CowEvcWrapperTest is EVaultTestBase {
         returns (
             address[] memory tokens,
             uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
+            GPv2Trade.Data[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
         )
     {
         return (
             new address[](0),
             new uint256[](0),
-            new CowSettlement.TradeData[](0),
+            new GPv2Trade.Data[](0),
             [
                 new CowSettlement.InteractionData[](0),
                 new CowSettlement.InteractionData[](0),
@@ -120,14 +123,14 @@ contract CowEvcWrapperTest is EVaultTestBase {
     function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver)
         public
         pure
-        returns (CowSettlement.TradeData memory)
+        returns (GPv2Trade.Data memory)
     {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
         uint256 flags = 3 << 5; // 1100000
 
-        return CowSettlement.TradeData({
+        return GPv2Trade.Data({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: receiver,
@@ -160,7 +163,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             GPv2Order.Data memory orderData,
             address[] memory tokens,
             uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
+            GPv2Trade.Data[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
         )
     {
@@ -186,7 +189,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         orderUid = getOrderUid(owner, orderData);
 
         // Get trade data
-        trades = new CowSettlement.TradeData[](1);
+        trades = new GPv2Trade.Data[](1);
         trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
 
         // Get tokens and prices
@@ -210,7 +213,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         (
             address[] memory tokens,
             uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
+            GPv2Trade.Data[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
         ) = getEmptySettlement();
 
@@ -228,7 +231,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         (
             address[] memory tokens,
             uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
+            GPv2Trade.Data[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
         ) = getEmptySettlement();
 
@@ -257,7 +260,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             ,
             address[] memory tokens,
             uint256[] memory clearingPrices,
-            CowSettlement.TradeData[] memory trades,
+            GPv2Trade.Data[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
         ) = getSwapSettlement(user, sellAmount, buyAmount);
 
@@ -302,6 +305,52 @@ contract CowEvcWrapperTest is EVaultTestBase {
         assertEq(extractedOwner, user, "Owner mismatch");
         assertEq(extractedValidTo, orderData.validTo, "ValidTo mismatch");
     }
+
+    // This test is to debug issues with the pre-signing. I want to reproduce what the settlement does to recover the
+    // order from the trade data.
+    function test_order_extraction_from_trade() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        // Create order parameters
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 1000e18; // 1000 DAI
+
+        // Get settlement data
+        (
+            bytes memory orderUid,
+            GPv2Order.Data memory originalOrder,
+            address[] memory tokens,
+            ,
+            GPv2Trade.Data[] memory trades,
+        ) = getSwapSettlement(user, sellAmount, buyAmount);
+
+        // Convert tokens to IERC20 array
+        IERC20[] memory erc20Tokens = new IERC20[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            erc20Tokens[i] = IERC20(tokens[i]);
+        }
+
+        // Extract order from trade using helper
+        GPv2Order.Data memory extractedOrder;
+        helper.extractOrder(trades[0], erc20Tokens, extractedOrder);
+
+        // Verify the extracted order matches the original order
+        assertEq(address(extractedOrder.sellToken), address(originalOrder.sellToken), "Sell token mismatch");
+        assertEq(address(extractedOrder.buyToken), address(originalOrder.buyToken), "Buy token mismatch");
+        assertEq(extractedOrder.receiver, originalOrder.receiver, "Receiver mismatch");
+        assertEq(extractedOrder.sellAmount, originalOrder.sellAmount, "Sell amount mismatch");
+        assertEq(extractedOrder.buyAmount, originalOrder.buyAmount, "Buy amount mismatch");
+        assertEq(extractedOrder.validTo, originalOrder.validTo, "ValidTo mismatch");
+        assertEq(extractedOrder.appData, originalOrder.appData, "AppData mismatch");
+        assertEq(extractedOrder.feeAmount, originalOrder.feeAmount, "Fee amount mismatch");
+        assertEq(extractedOrder.kind, originalOrder.kind, "Kind mismatch");
+        assertEq(extractedOrder.partiallyFillable, originalOrder.partiallyFillable, "Partially fillable mismatch");
+        assertEq(extractedOrder.sellTokenBalance, originalOrder.sellTokenBalance, "Sell token balance mismatch");
+        assertEq(extractedOrder.buyTokenBalance, originalOrder.buyTokenBalance, "Buy token balance mismatch");
+
+        // Verify the orderUid matches the orderId generated from the extractedOrder
+        assertEq(getOrderUid(user, extractedOrder), orderUid, "OrderUid mismatch");
+    }
 }
 
 contract MilkSwap {
@@ -335,5 +384,13 @@ contract GPv2OrderHelper {
         returns (bytes32 orderDigest, address owner, uint32 validTo)
     {
         return orderUid.extractOrderUidParams();
+    }
+
+    function extractOrder(GPv2Trade.Data calldata trade, IERC20[] calldata tokens, GPv2Order.Data memory order)
+        external
+        pure
+        returns (GPv2Signing.Scheme)
+    {
+        return GPv2Trade.extractOrder(trade, tokens, order);
     }
 }

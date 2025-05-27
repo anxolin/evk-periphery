@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
-import {CowSettlement} from "./vendor/CowSettlement.sol";
+import {CowSettlement, GPv2Trade} from "./vendor/CowSettlement.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
@@ -27,7 +27,7 @@ contract CowEvcWrapper {
         IEVC.BatchItem[] calldata postSettlementItems,
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        CowSettlement.TradeData[] calldata trades,
+        GPv2Trade.Data[] calldata trades,
         CowSettlement.InteractionData[][3] calldata interactions
     ) external payable {
         // Revert if not a valid solver
@@ -68,7 +68,7 @@ contract CowEvcWrapper {
     function settle(
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        CowSettlement.TradeData[] calldata trades,
+        GPv2Trade.Data[] calldata trades,
         CowSettlement.InteractionData[][3] calldata interactions
     ) external payable {
         // TODO: This is unsecure, only for demostration purposes (it should use transient data and avoid re-entrancies)
