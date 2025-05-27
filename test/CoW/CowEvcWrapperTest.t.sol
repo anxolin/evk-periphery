@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.23;
 
-import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
 import {GPv2Order, IERC20} from "cow/libraries/GPv2Order.sol";
+import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 
-import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
 import {CowEvcWrapper} from "../../src/CoW/CowEvcWrapper.sol";
 import {AllowListAuthentication} from "../../src/CoW/vendor/AllowListAuthentication.sol";
+import {CowSettlement} from "../../src/CoW/vendor/CowSettlement.sol";
 
 import {console} from "forge-std/Test.sol";
 
 contract CowEvcWrapperTest is EVaultTestBase {
+    using GPv2Order for GPv2Order.Data;
+    using GPv2Order for bytes;
+
     uint256 mainnetFork;
     uint256 BLOCK_NUMBER = 22546006;
     string FORK_RPC_URL = vm.envOr("FORK_RPC_URL", string(""));
@@ -28,8 +31,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
     MilkSwap public milkSwap;
     address user;
 
+    GPv2OrderHelper helper;
+
     function setUp() public virtual override {
         super.setUp();
+        helper = new GPv2OrderHelper();
 
         if (bytes(FORK_RPC_URL).length != 0) {
             mainnetFork = vm.createSelectFork(FORK_RPC_URL);
@@ -95,12 +101,12 @@ contract CowEvcWrapperTest is EVaultTestBase {
         );
     }
 
-    function getOrderUid(GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
+    function getOrderUid(address owner, GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
         bytes32 orderDigest = GPv2Order.hash(orderData, cowSettlement.domainSeparator());
 
         // Create order UID by concatenating orderDigest, owner, and validTo
-        return abi.encodePacked(orderDigest, address(cowSettlement), uint32(orderData.validTo));
+        return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
     }
 
     function getSwapInteraction(uint256 sellAmount) public view returns (CowSettlement.InteractionData memory) {
@@ -111,7 +117,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         });
     }
 
-    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address receiver)
+    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver)
         public
         pure
         returns (CowSettlement.TradeData memory)
@@ -132,7 +138,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             feeAmount: 0,
             flags: flags,
             executedAmount: 0,
-            signature: abi.encodePacked(receiver)
+            signature: abi.encodePacked(owner)
         });
     }
 
@@ -146,11 +152,12 @@ contract CowEvcWrapperTest is EVaultTestBase {
         clearingPrices[1] = 1e18; // DAI price
     }
 
-    function getSwapSettlement(uint256 sellAmount, uint256 buyAmount)
+    function getSwapSettlement(address owner, uint256 sellAmount, uint256 buyAmount)
         public
         view
         returns (
             bytes memory orderUid,
+            GPv2Order.Data memory orderData,
             address[] memory tokens,
             uint256[] memory clearingPrices,
             CowSettlement.TradeData[] memory trades,
@@ -160,10 +167,10 @@ contract CowEvcWrapperTest is EVaultTestBase {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create order data
-        GPv2Order.Data memory orderData = GPv2Order.Data({
+        orderData = GPv2Order.Data({
             sellToken: IERC20(WETH),
             buyToken: IERC20(DAI),
-            receiver: user,
+            receiver: owner,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
@@ -176,11 +183,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
         });
 
         // Get order UID for the order
-        orderUid = getOrderUid(orderData);
+        orderUid = getOrderUid(owner, orderData);
 
         // Get trade data
         trades = new CowSettlement.TradeData[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, user);
+        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
 
         // Get tokens and prices
         (tokens, clearingPrices) = getTokensAndPrices();
@@ -193,7 +200,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         ];
         interactions[0][0] = getSwapInteraction(sellAmount);
 
-        return (orderUid, tokens, clearingPrices, trades, interactions);
+        return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
 
     function test_batchWithSettle_Empty() external {
@@ -247,11 +254,12 @@ contract CowEvcWrapperTest is EVaultTestBase {
         // Get settlement, that sells WETH for DAI
         (
             bytes memory orderUid,
+            ,
             address[] memory tokens,
             uint256[] memory clearingPrices,
             CowSettlement.TradeData[] memory trades,
             CowSettlement.InteractionData[][3] memory interactions
-        ) = getSwapSettlement(sellAmount, buyAmount);
+        ) = getSwapSettlement(user, sellAmount, buyAmount);
 
         // User, pre-approve the order
         console.logBytes(orderUid);
@@ -271,6 +279,28 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
         uint256 daiBalanceInMilkSwapAfter = IERC20(DAI).balanceOf(address(milkSwap));
         assertEq(daiBalanceInMilkSwapAfter, daiBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less DAI");
+    }
+
+    // I just created this to debug issues with the pre-signing
+    function test_orderUid_generation_and_extraction() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        // Get order ID
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 1000e18; //  1000 DAI
+        (bytes memory orderUid, GPv2Order.Data memory orderData,,,,) = getSwapSettlement(user, sellAmount, buyAmount);
+
+        // Generate order UID
+        // bytes memory orderUid = getOrderUid(user, orderData);
+
+        // Extract parameters from order UID using helper
+        (bytes32 extractedOrderDigest, address extractedOwner, uint32 extractedValidTo) =
+            helper.extractOrderUidParams(orderUid);
+
+        // Verify the extracted parameters match the original values
+        assertEq(extractedOrderDigest, orderData.hash(cowSettlement.domainSeparator()), "Order digest mismatch");
+        assertEq(extractedOwner, user, "Owner mismatch");
+        assertEq(extractedValidTo, orderData.validTo, "ValidTo mismatch");
     }
 }
 
@@ -293,5 +323,17 @@ contract MilkSwap {
 
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenOut).transfer(msg.sender, amountOut);
+    }
+}
+
+contract GPv2OrderHelper {
+    using GPv2Order for bytes;
+
+    function extractOrderUidParams(bytes calldata orderUid)
+        external
+        pure
+        returns (bytes32 orderDigest, address owner, uint32 validTo)
+    {
+        return orderUid.extractOrderUidParams();
     }
 }
