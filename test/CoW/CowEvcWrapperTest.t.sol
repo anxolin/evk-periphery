@@ -151,8 +151,8 @@ contract CowEvcWrapperTest is EVaultTestBase {
         tokens[1] = DAI;
 
         clearingPrices = new uint256[](2);
-        clearingPrices[0] = 1e18; // WETH price
-        clearingPrices[1] = 1e18; // DAI price
+        clearingPrices[0] = 1000; // WETH price
+        clearingPrices[1] = 1; // DAI price
     }
 
     function getSwapSettlement(address owner, uint256 sellAmount, uint256 buyAmount)
@@ -179,10 +179,10 @@ contract CowEvcWrapperTest is EVaultTestBase {
             validTo: validTo,
             appData: bytes32(0),
             feeAmount: 0,
-            kind: bytes32("sell"),
+            kind: GPv2Order.KIND_SELL,
             partiallyFillable: false,
-            sellTokenBalance: bytes32("erc20"),
-            buyTokenBalance: bytes32("erc20")
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
         });
 
         // Get order UID for the order
@@ -197,11 +197,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
         // Setup interactions
         interactions = [
-            new CowSettlement.InteractionData[](1),
             new CowSettlement.InteractionData[](0),
+            new CowSettlement.InteractionData[](1),
             new CowSettlement.InteractionData[](0)
         ];
-        interactions[0][0] = getSwapInteraction(sellAmount);
+        interactions[1][0] = getSwapInteraction(sellAmount);
 
         return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
@@ -331,8 +331,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         }
 
         // Extract order from trade using helper
-        GPv2Order.Data memory extractedOrder;
-        helper.extractOrder(trades[0], erc20Tokens, extractedOrder);
+        (GPv2Order.Data memory extractedOrder, GPv2Signing.Scheme scheme) = helper.extractOrder(trades[0], erc20Tokens);
 
         // Verify the extracted order matches the original order
         assertEq(address(extractedOrder.sellToken), address(originalOrder.sellToken), "Sell token mismatch");
@@ -348,30 +347,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
         assertEq(extractedOrder.sellTokenBalance, originalOrder.sellTokenBalance, "Sell token balance mismatch");
         assertEq(extractedOrder.buyTokenBalance, originalOrder.buyTokenBalance, "Buy token balance mismatch");
 
+        // Assert the scheme is 712
+        require(scheme != GPv2Signing.Scheme.Eip712, "Signing scheme doesn't match");
+
         // Verify the orderUid matches the orderId generated from the extractedOrder
         assertEq(getOrderUid(user, extractedOrder), orderUid, "OrderUid mismatch");
-    }
-}
-
-contract MilkSwap {
-    mapping(address => uint256) public prices; // Price expressed in atoms of the quote per unit of the base token
-    address public quoteToken;
-
-    function setPrice(address token, uint256 price) external {
-        prices[token] = price;
-    }
-
-    function getAmountOut(address tokenIn, uint256 amountIn) external view returns (uint256 amountOut) {
-        return (amountIn * prices[tokenIn]) / 1e18;
-    }
-
-    function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
-        require(tokenOut != quoteToken, "tokenOut must be the quote token");
-
-        uint256 amountOut = this.getAmountOut(tokenIn, amountIn);
-
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
-        IERC20(tokenOut).transfer(msg.sender, amountOut);
     }
 }
 
@@ -386,11 +366,35 @@ contract GPv2OrderHelper {
         return orderUid.extractOrderUidParams();
     }
 
-    function extractOrder(GPv2Trade.Data calldata trade, IERC20[] calldata tokens, GPv2Order.Data memory order)
+    function extractOrder(GPv2Trade.Data calldata trade, IERC20[] calldata tokens)
         external
         pure
-        returns (GPv2Signing.Scheme)
+        returns (GPv2Order.Data memory extractedOrder, GPv2Signing.Scheme scheme)
     {
-        return GPv2Trade.extractOrder(trade, tokens, order);
+        GPv2Order.Data memory order;
+        scheme = GPv2Trade.extractOrder(trade, tokens, order);
+        return (order, scheme);
+    }
+}
+
+contract MilkSwap {
+    mapping(address => uint256) public prices; // Price expressed in atoms of the quote per unit of the base token
+    address public quoteToken;
+
+    function setPrice(address token, uint256 price) external {
+        prices[token] = price;
+    }
+
+    function getAmountOut(address tokenIn, uint256 amountIn) external view returns (uint256 amountOut) {
+        return (amountIn * prices[tokenIn]);
+    }
+
+    function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
+        require(tokenOut != quoteToken, "tokenOut must be the quote token");
+
+        uint256 amountOut = this.getAmountOut(tokenIn, amountIn);
+
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(tokenOut).transfer(msg.sender, amountOut);
     }
 }
