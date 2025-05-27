@@ -50,10 +50,13 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
         // Setup some liquidity for MilkSwap
         milkSwap = new MilkSwap();
-        deal(DAI, address(milkSwap), 1000e18); // Add DAI to MilkSwap
+        deal(DAI, address(milkSwap), 10000e18); // Add DAI to MilkSwap
+        milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 DAI
 
         // User has approved WETH for COW Protocol
+        vm.startPrank(user);
         IERC20(WETH).approve(address(cowSettlement.vaultRelayer()), type(uint256).max);
+        vm.stopPrank();
     }
 
     function getEmptySettlement()
@@ -80,6 +83,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
     function getOrderUid(uint256 sellAmount, uint256 buyAmount, uint32 validTo)
         public
+        view
         returns (bytes memory orderUid)
     {
         // Create order data
@@ -134,7 +138,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             feeAmount: 0,
             flags: flags,
             executedAmount: 0,
-            signature: bytes("") // No signature needed for pre-approval
+            signature: abi.encodePacked(receiver)
         });
     }
 
@@ -150,6 +154,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
     function getSwapSettlement(uint256 sellAmount, uint256 buyAmount)
         public
+        view
         returns (
             bytes memory orderUid,
             address[] memory tokens,
@@ -226,8 +231,8 @@ contract CowEvcWrapperTest is EVaultTestBase {
         vm.startPrank(user);
 
         // Create order parameters
-        uint256 sellAmount = 100e18; // 100 WETH
-        uint256 buyAmount = 100e18; //  100 DAI (we assume 1:1 price WETH to DAI)
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 1000e18; //  1000 DAI
 
         // Get settlement, that sells WETH for DAI
         (
@@ -259,19 +264,22 @@ contract CowEvcWrapperTest is EVaultTestBase {
 }
 
 contract MilkSwap {
-    // Mock price for testing - 1:1 ratio
-    uint256 constant PRICE = 1e18;
+    mapping(address => uint256) public prices; // Price expressed in atoms of the quote per unit of the base token
+    address public quoteToken;
 
-    function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn)
-        external
-        pure
-        returns (uint256 amountOut)
-    {
-        return (amountIn * PRICE) / 1e18;
+    function setPrice(address token, uint256 price) external {
+        prices[token] = price;
+    }
+
+    function getAmountOut(address tokenIn, uint256 amountIn) external view returns (uint256 amountOut) {
+        return (amountIn * prices[tokenIn]) / 1e18;
     }
 
     function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
-        uint256 amountOut = this.getAmountOut(tokenIn, tokenOut, amountIn);
+        require(tokenOut != quoteToken, "tokenOut must be the quote token");
+
+        uint256 amountOut = this.getAmountOut(tokenIn, amountIn);
+
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenOut).transfer(msg.sender, amountOut);
     }
