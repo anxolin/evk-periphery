@@ -62,8 +62,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 DAI
 
         // Set the approval for MilSwap in the settlement
-        vm.startPrank(address(cowSettlement));
-        IERC20(DAI).approve(address(milkSwap), type(uint256).max);
+        vm.prank(address(cowSettlement));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
 
         // User has approved WETH for COW Protocol
