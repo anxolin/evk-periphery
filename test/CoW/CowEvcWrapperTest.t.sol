@@ -118,6 +118,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
         pure
         returns (CowSettlement.TradeData memory)
     {
+        // Set flags for (pre-sign, FoK sell order)
+        // See
+        // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
+        uint256 flags = 3 << 5; // 1100000
+
         return CowSettlement.TradeData({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
@@ -127,7 +132,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             validTo: validTo,
             appData: bytes32(0),
             feeAmount: 0,
-            flags: 0,
+            flags: flags,
             executedAmount: 0,
             signature: bytes("") // No signature needed for pre-approval
         });
