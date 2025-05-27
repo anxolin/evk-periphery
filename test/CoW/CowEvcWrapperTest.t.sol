@@ -140,6 +140,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
             appData: bytes32(0),
             feeAmount: 0,
             flags: flags,
+            // Executed amount is unused for fill-and-kill orders
             executedAmount: 0,
             signature: abi.encodePacked(owner)
         });
