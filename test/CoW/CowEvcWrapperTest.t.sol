@@ -345,8 +345,8 @@ contract CowEvcWrapperTest is EVaultTestBase {
         assertEq(extractedOrder.sellTokenBalance, originalOrder.sellTokenBalance, "Sell token balance mismatch");
         assertEq(extractedOrder.buyTokenBalance, originalOrder.buyTokenBalance, "Buy token balance mismatch");
 
-        // Assert the scheme is 712
-        require(scheme != GPv2Signing.Scheme.Eip712, "Signing scheme doesn't match");
+        // Assert the scheme is pre-sign
+        require(scheme == GPv2Signing.Scheme.PreSign, "Signing scheme doesn't match");
 
         // Verify the orderUid matches the orderId generated from the extractedOrder
         assertEq(getOrderUid(user, extractedOrder), orderUid, "OrderUid mismatch");
