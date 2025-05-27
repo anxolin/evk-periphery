@@ -52,12 +52,11 @@ contract CowEvcWrapperTest is EVaultTestBase {
         AllowListAuthentication allowList = cowSettlement.authenticator();
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
-        vm.startPrank(manager);
+        vm.prank(manager);
         allowList.addSolver(address(wrapper));
-        vm.stopPrank();
 
         // Setup some liquidity for MilkSwap
-        milkSwap = new MilkSwap();
+        milkSwap = new MilkSwap(DAI);
         deal(DAI, address(milkSwap), 10000e18); // Add DAI to MilkSwap
         milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 DAI
 
@@ -66,9 +65,9 @@ contract CowEvcWrapperTest is EVaultTestBase {
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
 
         // User has approved WETH for COW Protocol
-        vm.startPrank(user);
-        IERC20(WETH).approve(address(cowSettlement.vaultRelayer()), type(uint256).max);
-        vm.stopPrank();
+        address vaultRelayer = cowSettlement.vaultRelayer();
+        vm.prank(user);
+        IERC20(WETH).approve(vaultRelayer, type(uint256).max);
 
         // Setup labels
         vm.label(solver, "solver");
@@ -208,7 +207,6 @@ contract CowEvcWrapperTest is EVaultTestBase {
 
     function test_batchWithSettle_Empty() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
-        vm.startPrank(solver);
 
         (
             address[] memory tokens,
@@ -220,6 +218,7 @@ contract CowEvcWrapperTest is EVaultTestBase {
         IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](0);
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
+        vm.prank(solver);
         wrapper.batchWithSettle(preSettlementItems, postSettlementItems, tokens, clearingPrices, trades, interactions);
     }
 
@@ -378,16 +377,23 @@ contract MilkSwap {
     mapping(address => uint256) public prices; // Price expressed in atoms of the quote per unit of the base token
     address public quoteToken;
 
+    constructor(address _quoteToken) {
+        quoteToken = _quoteToken;
+    }
+
     function setPrice(address token, uint256 price) external {
         prices[token] = price;
     }
 
     function getAmountOut(address tokenIn, uint256 amountIn) external view returns (uint256 amountOut) {
-        return (amountIn * prices[tokenIn]);
+        uint256 price = prices[tokenIn];
+        require(price > 0, "tokenIn is not supported");
+
+        return (amountIn * price);
     }
 
     function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
-        require(tokenOut != quoteToken, "tokenOut must be the quote token");
+        require(tokenOut == quoteToken, "tokenOut must be the quote token");
 
         uint256 amountOut = this.getAmountOut(tokenIn, amountIn);
 
