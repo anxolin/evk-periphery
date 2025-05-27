@@ -53,10 +53,25 @@ contract CowEvcWrapperTest is EVaultTestBase {
         deal(DAI, address(milkSwap), 10000e18); // Add DAI to MilkSwap
         milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 DAI
 
+        // Set the approval for MilSwap in the settlement
+        vm.startPrank(address(cowSettlement));
+        IERC20(DAI).approve(address(milkSwap), type(uint256).max);
+        IERC20(WETH).approve(address(milkSwap), type(uint256).max);
+
         // User has approved WETH for COW Protocol
         vm.startPrank(user);
         IERC20(WETH).approve(address(cowSettlement.vaultRelayer()), type(uint256).max);
         vm.stopPrank();
+
+        // Setup labels
+        vm.label(solver, "solver");
+        vm.label(allowListManager, "allowListManager");
+        vm.label(user, "user");
+        vm.label(DAI, "DAI");
+        vm.label(WETH, "WETH");
+        vm.label(address(cowSettlement), "cowSettlement");
+        vm.label(address(wrapper), "wrapper");
+        vm.label(address(milkSwap), "milkSwap");
     }
 
     function getEmptySettlement()
