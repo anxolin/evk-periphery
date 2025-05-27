@@ -158,7 +158,7 @@ contract CowEvcExperimentsTest is EVaultTestBase {
         eUSDT.deposit(type(uint256).max, user);
     }
 
-    function test_solverCanSettleOutsideEVC() external {
+    function test_canSettleOutsideEVC() external {
         setupFork(BLOCK_NUMBER, false);
         vm.startPrank(solver);
 
@@ -170,14 +170,14 @@ contract CowEvcExperimentsTest is EVaultTestBase {
         );
     }
 
-    function test_solverCanExecuteEmptyEvcBatch() external {
+    function test_canExecuteEmptyEvcBatch() external {
         setupFork(BLOCK_NUMBER, false);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](0);
         evc.batch(items);
     }
 
-    function test_solverCantWriteToStorageInsideEVC() external {
+    function test_cantWriteToStorageInsideEVC() external {
         setupFork(BLOCK_NUMBER, false);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
@@ -193,7 +193,7 @@ contract CowEvcExperimentsTest is EVaultTestBase {
         evc.batch(items);
     }
 
-    function test_solverCanWriteUsingEvcWrapper() external {
+    function test_canWriteUsingEvcWrapper() external {
         setupFork(BLOCK_NUMBER, false);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
@@ -210,7 +210,7 @@ contract CowEvcExperimentsTest is EVaultTestBase {
         assertEq(evcWrapper.value(), 123);
     }
 
-    function test_solverCantSettleInsideEVC() external {
+    function test_cantSettleInsideEVC() external {
         setupFork(BLOCK_NUMBER, false);
 
         SettlementData memory emptySettlement = getEmptySettlement();
