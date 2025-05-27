@@ -34,3 +34,6 @@
 [submodule "lib/solidity-bytes-utils"]
 	path = lib/solidity-bytes-utils
 	url = https://github.com/GNSPS/solidity-bytes-utils
+[submodule "lib/contracts"]
+	path = lib/contracts
+	url = https://github.com/cowprotocol/contracts
