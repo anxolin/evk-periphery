@@ -285,16 +285,13 @@ contract CowEvcWrapperTest is EVaultTestBase {
     }
 
     // I just created this to debug issues with the pre-signing
-    function test_orderUid_generation_and_extraction() external {
+    function test_orderUid_extraction() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
         // Get order ID
         uint256 sellAmount = 1e18; // 1 WETH
         uint256 buyAmount = 1000e18; //  1000 DAI
         (bytes memory orderUid, GPv2Order.Data memory orderData,,,,) = getSwapSettlement(user, sellAmount, buyAmount);
-
-        // Generate order UID
-        // bytes memory orderUid = getOrderUid(user, orderData);
 
         // Extract parameters from order UID using helper
         (bytes32 extractedOrderDigest, address extractedOwner, uint32 extractedValidTo) =
