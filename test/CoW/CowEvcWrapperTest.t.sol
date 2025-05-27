@@ -96,32 +96,12 @@ contract CowEvcWrapperTest is EVaultTestBase {
         );
     }
 
-    function getOrderUid(uint256 sellAmount, uint256 buyAmount, uint32 validTo)
-        public
-        view
-        returns (bytes memory orderUid)
-    {
-        // Create order data
-        CowSettlement.OrderData memory orderData = CowSettlement.OrderData({
-            sellToken: WETH,
-            buyToken: DAI,
-            receiver: user,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: bytes32("sell"),
-            partiallyFillable: false,
-            sellTokenBalance: bytes32("erc20"),
-            buyTokenBalance: bytes32("erc20")
-        });
-
+    function getOrderUid(CowSettlement.OrderData memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
         bytes32 orderDigest = CowOrder.hash(orderData, cowSettlement.domainSeparator());
 
         // Create order UID by concatenating orderDigest, owner, and validTo
-        return abi.encodePacked(orderDigest, user, uint32(orderData.validTo));
+        return abi.encodePacked(orderDigest, address(cowSettlement), uint32(orderData.validTo));
     }
 
     function getSwapInteraction(uint256 sellAmount) public view returns (CowSettlement.InteractionData memory) {
@@ -180,8 +160,24 @@ contract CowEvcWrapperTest is EVaultTestBase {
     {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
+        // Create order data
+        CowSettlement.OrderData memory orderData = CowSettlement.OrderData({
+            sellToken: WETH,
+            buyToken: DAI,
+            receiver: user,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: bytes32("sell"),
+            partiallyFillable: false,
+            sellTokenBalance: bytes32("erc20"),
+            buyTokenBalance: bytes32("erc20")
+        });
+
         // Get order UID for the order
-        orderUid = getOrderUid(sellAmount, buyAmount, validTo);
+        orderUid = getOrderUid(orderData);
 
         // Get trade data
         trades = new CowSettlement.TradeData[](1);
@@ -258,7 +254,8 @@ contract CowEvcWrapperTest is EVaultTestBase {
             CowSettlement.InteractionData[][3] memory interactions
         ) = getSwapSettlement(sellAmount, buyAmount);
 
-        // Pre-approve the order
+        // User, pre-approve the order
+        console.logBytes(orderUid);
         cowSettlement.setPreSignature(orderUid, true);
 
         // Execute the settlement through the wrapper
