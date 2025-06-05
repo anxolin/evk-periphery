@@ -23,7 +23,7 @@ contract CowExtractOrderTest is CowBaseTest {
         // Get order ID
         uint256 sellAmount = 1e18; // 1 WETH
         uint256 buyAmount = 1000e18; //  1000 DAI
-        (bytes memory orderUid, GPv2Order.Data memory orderData,,,,) = getSwapSettlement(user, sellAmount, buyAmount);
+        (bytes memory orderUid, GPv2Order.Data memory orderData,,,,) = getSwapSettlement(user, user, sellAmount, buyAmount);
 
         // Extract parameters from order UID using helper
         (bytes32 extractedOrderDigest, address extractedOwner, uint32 extractedValidTo) =
@@ -53,7 +53,7 @@ contract CowExtractOrderTest is CowBaseTest {
             address[] memory tokens,
             ,
             GPv2Trade.Data[] memory trades,
-        ) = getSwapSettlement(user, sellAmount, buyAmount);
+        ) = getSwapSettlement(user, user, sellAmount, buyAmount);
 
         // Convert tokens to IERC20 array
         IERC20[] memory erc20Tokens = new IERC20[](tokens.length);
