@@ -215,7 +215,8 @@ contract CowEvcWrapperTest is CowBaseTest {
         // Verify the position was created
         assertApproxEqAbs(
             IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(user)),
-            IEVault(eSUSDS).convertToShares(buyAmount) + SUSDS_MARGIN, 5e18,
+            buyAmount + SUSDS_MARGIN,
+            1, // rounding in favor of the vault during deposits
             "User should receive eSUSDS"
         );
         assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
