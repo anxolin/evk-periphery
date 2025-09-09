@@ -6,6 +6,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 import {GPv2Trade, IERC20} from "cow/libraries/GPv2Trade.sol";
 
 import {IEVC} from "ethereum-vault-connector/interfaces/IEthereumVaultConnector.sol";
+import {EthereumVaultConnector} from "ethereum-vault-connector/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 
 import {CowEvcWrapper} from "../../../src/CoW/CowEvcWrapper.sol";
@@ -25,14 +26,22 @@ contract CowBaseTest is EVaultTestBase {
     address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
     address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
-    address constant DAI = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+    // Vaults
+    address internal eSUSDS = 0x1e548CfcE5FCF17247E024eF06d32A01841fF404;
+    address internal eWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
+
+    address payable constant realEVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
+    address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
     CowSettlement constant cowSettlement = CowSettlement(0x9008D19f58AAbD9eD0D60971565AA8510560ab41);
 
     CowEvcWrapper public wrapper;
     MilkSwap public milkSwap;
     address user;
+    uint256 privateKey = 123;
 
     GPv2OrderHelper helper;
 
@@ -44,8 +53,9 @@ contract CowBaseTest is EVaultTestBase {
             mainnetFork = vm.createSelectFork(FORK_RPC_URL);
             vm.rollFork(BLOCK_NUMBER);
         }
+        evc = EthereumVaultConnector(realEVC);
 
-        user = makeAddr("user");
+        user = vm.addr(privateKey);
         wrapper = new CowEvcWrapper(address(evc), address(cowSettlement));
 
         // Add wrapper as solver
@@ -56,9 +66,9 @@ contract CowBaseTest is EVaultTestBase {
         allowList.addSolver(address(wrapper));
 
         // Setup some liquidity for MilkSwap
-        milkSwap = new MilkSwap(DAI);
-        deal(DAI, address(milkSwap), 10000e18); // Add DAI to MilkSwap
-        milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 DAI
+        milkSwap = new MilkSwap(SUSDS);
+        deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
+        milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 SUSDS
 
         // Set the approval for MilSwap in the settlement
         vm.prank(address(cowSettlement));
@@ -73,8 +83,10 @@ contract CowBaseTest is EVaultTestBase {
         vm.label(solver, "solver");
         vm.label(allowListManager, "allowListManager");
         vm.label(user, "user");
-        vm.label(DAI, "DAI");
+        vm.label(SUSDS, "SUSDS");
         vm.label(WETH, "WETH");
+        vm.label(eSUSDS, "eSUSDS");
+        vm.label(eWETH, "eWETH");
         vm.label(address(cowSettlement), "cowSettlement");
         vm.label(address(wrapper), "wrapper");
         vm.label(address(milkSwap), "milkSwap");
@@ -114,7 +126,7 @@ contract CowBaseTest is EVaultTestBase {
         return CowSettlement.InteractionData({
             to: address(milkSwap),
             value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, DAI, sellAmount))
+            callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
         });
     }
 
@@ -146,14 +158,14 @@ contract CowBaseTest is EVaultTestBase {
     function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](2);
         tokens[0] = WETH;
-        tokens[1] = DAI;
+        tokens[1] = SUSDS;
 
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 1000; // WETH price
-        clearingPrices[1] = 1; // DAI price
+        clearingPrices[1] = 1; // SUSDS price
     }
 
-    function getSwapSettlement(address owner, uint256 sellAmount, uint256 buyAmount)
+    function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
         public
         view
         returns (
@@ -170,8 +182,8 @@ contract CowBaseTest is EVaultTestBase {
         // Create order data
         orderData = GPv2Order.Data({
             sellToken: IERC20(WETH),
-            buyToken: IERC20(DAI),
-            receiver: owner,
+            buyToken: IERC20(SUSDS),
+            receiver: receiver,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
